@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CarteFormation } from "@/components/CarteFormation";
-import { EtoilesNote } from "@/components/EtoilesNote";
+
+export const revalidate = 3600;
 
 const CATEGORIES_STATIC = [
   { nom: "Copywriting", slug: "copywriting", emoji: "✍️" },
@@ -19,33 +20,61 @@ const CATEGORIES_STATIC = [
 export default async function HomePage() {
   const supabase = createClient();
 
-  // Formations recommandées/sponsorisées en premier
-  const { data: formationsRecommandees } = await supabase
-    .from("formations")
-    .select("*")
-    .eq("est_active", true)
-    .or("est_sponsorisee.eq.true,est_recommandee.eq.true")
-    .order("rang_sponsorise", { ascending: true, nullsFirst: false })
-    .order("note_moyenne", { ascending: false })
-    .limit(6);
-
-  // Mieux notées
-  const { data: formationsMieuxNotees } = await supabase
-    .from("formations")
-    .select("*")
-    .eq("est_active", true)
-    .order("note_moyenne", { ascending: false })
-    .limit(6);
-
-  const { data: categories } = await supabase
-    .from("formations_categories")
-    .select("*")
-    .order("nom");
+  const [
+    { data: formationsRecommandees },
+    { data: formationsMieuxNotees },
+    { data: categories },
+  ] = await Promise.all([
+    supabase
+      .from("formations")
+      .select("*")
+      .eq("est_active", true)
+      .or("est_sponsorisee.eq.true,est_recommandee.eq.true")
+      .order("rang_sponsorise", { ascending: true, nullsFirst: false })
+      .order("note_moyenne", { ascending: false })
+      .limit(6),
+    supabase
+      .from("formations")
+      .select("*")
+      .eq("est_active", true)
+      .order("note_moyenne", { ascending: false })
+      .limit(6),
+    supabase.from("formations_categories").select("*").order("nom"),
+  ]);
 
   const cats = categories || CATEGORIES_STATIC;
 
+  const schemaItemList = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "Formations business en ligne les mieux notées",
+    itemListElement: (formationsMieuxNotees || []).map((f: any, i: number) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      item: {
+        "@type": "Course",
+        name: f.nom,
+        url: `https://meilleure-formation.cloud/formations/${f.slug}`,
+        ...(f.note_moyenne > 0 && {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: f.note_moyenne,
+            reviewCount: f.nb_avis,
+            bestRating: 5,
+            worstRating: 1,
+          },
+        }),
+      },
+    })),
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaItemList) }}
+      />
+
       {/* Hero */}
       <section className="relative bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 text-white">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDM0djJoLTJ2LTJoMnptMC00aDJ2MmgtMnYtMnptLTQgMHYyaC0ydi0yaDJ6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30" />
@@ -63,7 +92,7 @@ export default async function HomePage() {
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
                 href="/comparateur"
-                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 rounded-xl bg-white text-primary-700 font-semibold text-lg hover:bg-gray-100 transition-colors shadow-lg"
+                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 rounded-xl bg-yellow-400 text-gray-900 font-semibold text-lg hover:bg-yellow-300 transition-colors shadow-lg"
               >
                 Lancer le comparateur
                 <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -101,7 +130,7 @@ export default async function HomePage() {
           Explorer par catégorie
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {cats.map((cat) => (
+          {cats.map((cat: any) => (
             <Link
               key={cat.slug}
               href={`/categorie/${cat.slug}`}
@@ -125,7 +154,7 @@ export default async function HomePage() {
             </h2>
           </div>
           <div className="space-y-4">
-            {formationsRecommandees.map((formation) => (
+            {formationsRecommandees.map((formation: any) => (
               <CarteFormation key={formation.id} formation={formation} />
             ))}
           </div>
@@ -141,7 +170,7 @@ export default async function HomePage() {
             </h2>
           </div>
           <div className="space-y-4">
-            {formationsMieuxNotees.map((formation) => (
+            {formationsMieuxNotees.map((formation: any) => (
               <CarteFormation key={formation.id} formation={formation} />
             ))}
           </div>

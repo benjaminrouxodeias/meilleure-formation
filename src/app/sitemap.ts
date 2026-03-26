@@ -9,6 +9,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: baseUrl, lastModified: new Date(), changeFrequency: "daily", priority: 1 },
     { url: `${baseUrl}/comparateur`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
+    { url: `${baseUrl}/blog`, lastModified: new Date(), changeFrequency: "daily", priority: 0.8 },
     { url: `${baseUrl}/revendiquer-ma-fiche`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
   ];
 
@@ -33,5 +34,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }));
 
-  return [...staticPages, ...categoryPages, ...formationPages];
+  // Pages blog
+  const { data: articles } = await supabase
+    .from("blog_articles")
+    .select("slug, updated_at")
+    .eq("est_publie", true);
+  const blogPages: MetadataRoute.Sitemap = (articles || []).map((a) => ({
+    url: `${baseUrl}/blog/${a.slug}`,
+    lastModified: new Date(a.updated_at),
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+
+  return [...staticPages, ...categoryPages, ...formationPages, ...blogPages];
 }

@@ -45,6 +45,8 @@ export interface Database {
           rang_sponsorise: number | null;
           est_recommandee: boolean;
           est_active: boolean;
+          trustpilot_note: number | null;
+          trustpilot_nb_avis: number;
           created_at: string;
           updated_at: string;
         };

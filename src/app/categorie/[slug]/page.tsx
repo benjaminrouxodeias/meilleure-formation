@@ -1,22 +1,30 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { CarteFormation } from "@/components/CarteFormation";
 import { FiltresSidebar } from "@/components/FiltresSidebar";
+import { FiltresMobileToggle } from "@/components/FiltresMobileToggle";
 import Link from "next/link";
+
+export const revalidate = 3600;
 
 interface PageProps {
   params: { slug: string };
   searchParams: { tri?: string; cpf?: string; note?: string; prix?: string; format?: string };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+const getCategorie = cache(async (slug: string) => {
   const supabase = createClient();
-  const { data: categorie } = await supabase
+  return supabase
     .from("formations_categories")
-    .select("nom, description")
-    .eq("slug", params.slug)
+    .select("*")
+    .eq("slug", slug)
     .single();
+});
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { data: categorie } = await getCategorie(params.slug);
 
   if (!categorie) return {};
 
@@ -25,6 +33,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `Meilleure formation ${categorie.nom} en ${annee} : comparatif complet`,
     description: `Comparatif des meilleures formations ${categorie.nom} en ${annee}. Avis vérifiés, prix, CPF. Trouvez la formation ${categorie.nom} qui vous correspond.`,
+    alternates: {
+      canonical: `https://meilleure-formation.cloud/categorie/${params.slug}`,
+    },
     openGraph: {
       title: `Meilleure formation ${categorie.nom} en ${annee}`,
       description: categorie.description || undefined,
@@ -32,17 +43,22 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
+export async function generateStaticParams() {
+  const { createClient: createBrowserClient } = await import("@supabase/supabase-js");
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const { data } = await supabase.from("formations_categories").select("slug");
+  return (data || []).map((c: any) => ({ slug: c.slug }));
+}
+
 export default async function CategoriePage({ params, searchParams }: PageProps) {
+  const { data: categorie } = await getCategorie(params.slug);
+  if (!categorie) notFound();
+
   const supabase = createClient();
   const annee = new Date().getFullYear();
-
-  const { data: categorie } = await supabase
-    .from("formations_categories")
-    .select("*")
-    .eq("slug", params.slug)
-    .single();
-
-  if (!categorie) notFound();
 
   let query = supabase
     .from("formations")
@@ -75,7 +91,7 @@ export default async function CategoriePage({ params, searchParams }: PageProps)
     case "prix-desc":
       query = query.order("prix_min", { ascending: false });
       break;
-    default: // recommandees
+    default:
       query = query
         .order("est_recommandee", { ascending: false })
         .order("est_sponsorisee", { ascending: false })
@@ -84,7 +100,7 @@ export default async function CategoriePage({ params, searchParams }: PageProps)
 
   const { data: formations } = await query;
 
-  // Schema.org ItemList
+  // Schema.org ItemList (fixed AggregateOffer + worstRating)
   const schemaItemList = {
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -106,21 +122,45 @@ export default async function CategoriePage({ params, searchParams }: PageProps)
             ratingValue: f.note_moyenne,
             reviewCount: f.nb_avis,
             bestRating: 5,
+            worstRating: 1,
           },
         }),
         offers: f.prix_min
-          ? {
-              "@type": "Offer",
-              price: f.prix_min,
-              priceCurrency: "EUR",
-              ...(f.prix_max && f.prix_max !== f.prix_min && {
+          ? f.prix_max && f.prix_max !== f.prix_min
+            ? {
+                "@type": "AggregateOffer",
+                lowPrice: f.prix_min,
                 highPrice: f.prix_max,
-              }),
-            }
+                priceCurrency: "EUR",
+              }
+            : {
+                "@type": "Offer",
+                price: f.prix_min,
+                priceCurrency: "EUR",
+              }
           : undefined,
         url: `https://meilleure-formation.cloud/formations/${f.slug}`,
       },
     })),
+  };
+
+  // Schema.org BreadcrumbList
+  const schemaBreadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Accueil",
+        item: "https://meilleure-formation.cloud",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: categorie.nom,
+      },
+    ],
   };
 
   // FAQ
@@ -170,12 +210,16 @@ export default async function CategoriePage({ params, searchParams }: PageProps)
       />
       <script
         type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaBreadcrumb) }}
+      />
+      <script
+        type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaFaq) }}
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm text-gray-500 mb-6">
+        <nav aria-label="Fil d'Ariane" className="flex items-center gap-2 text-sm text-gray-500 mb-6">
           <Link href="/" className="hover:text-primary-600">Accueil</Link>
           <span>/</span>
           <span className="text-gray-900">{categorie.nom}</span>
@@ -190,8 +234,13 @@ export default async function CategoriePage({ params, searchParams }: PageProps)
           </p>
         </div>
 
+        {/* Mobile filters toggle */}
+        <div className="lg:hidden mb-4">
+          <FiltresMobileToggle categorieSlug={params.slug} />
+        </div>
+
         <div className="lg:grid lg:grid-cols-4 lg:gap-8">
-          {/* Sidebar filtres */}
+          {/* Sidebar filtres (desktop) */}
           <aside className="hidden lg:block">
             <div className="sticky top-24 bg-white rounded-xl border border-gray-200 p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Filtrer</h3>

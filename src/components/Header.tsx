@@ -9,12 +9,13 @@ export function Header() {
             <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">MF</span>
             </div>
-            <span className="font-bold text-gray-900 hidden sm:block">
-              Meilleure Formation
+            <span className="font-bold hidden sm:block">
+              <span className="text-gray-900">Meilleure</span>{" "}
+              <span className="text-primary-600">Formation</span>
             </span>
           </Link>
 
-          <nav className="flex items-center gap-6">
+          <nav className="flex items-center gap-4 sm:gap-6">
             <Link
               href="/comparateur"
               className="text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors"
@@ -22,10 +23,16 @@ export function Header() {
               Comparateur
             </Link>
             <Link
-              href="/categorie/copywriting"
+              href="/#categories"
               className="text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors hidden md:block"
             >
               Catégories
+            </Link>
+            <Link
+              href="/blog"
+              className="text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors hidden sm:block"
+            >
+              Blog
             </Link>
             <Link
               href="/comparateur"

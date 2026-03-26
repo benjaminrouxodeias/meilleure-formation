@@ -23,8 +23,9 @@ export function Footer() {
               <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">MF</span>
               </div>
-              <span className="font-bold text-gray-900">
-                Meilleure Formation
+              <span className="font-bold">
+                <span className="text-gray-900">Meilleure</span>{" "}
+                <span className="text-primary-600">Formation</span>
               </span>
             </div>
             <p className="text-sm text-gray-600 max-w-xs">
@@ -58,6 +59,14 @@ export function Footer() {
                   className="text-sm text-gray-600 hover:text-primary-600 transition-colors"
                 >
                   Comparateur
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/blog"
+                  className="text-sm text-gray-600 hover:text-primary-600 transition-colors"
+                >
+                  Blog
                 </Link>
               </li>
               <li>

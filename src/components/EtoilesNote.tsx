@@ -3,6 +3,7 @@ interface EtoilesNoteProps {
   taille?: "sm" | "md" | "lg";
   afficherNote?: boolean;
   nbAvis?: number;
+  source?: string;
 }
 
 const tailles = {
@@ -16,6 +17,7 @@ export function EtoilesNote({
   taille = "md",
   afficherNote = true,
   nbAvis,
+  source,
 }: EtoilesNoteProps) {
   const etoiles = Array.from({ length: 5 }, (_, i) => {
     const remplissage = Math.min(1, Math.max(0, note - i));
@@ -61,7 +63,9 @@ export function EtoilesNote({
         </span>
       )}
       {nbAvis !== undefined && (
-        <span className="text-gray-500 text-sm">({nbAvis} avis)</span>
+        <span className="text-gray-500 text-sm">
+          ({nbAvis.toLocaleString("fr-FR")} avis{source ? ` ${source}` : ""})
+        </span>
       )}
     </div>
   );

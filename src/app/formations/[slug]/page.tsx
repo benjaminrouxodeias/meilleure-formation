@@ -1,28 +1,39 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { EtoilesNote } from "@/components/EtoilesNote";
 import { BadgeCPF, BadgeGarantie, BadgeRecommandee } from "@/components/BadgeCPF";
 import { CarteFormation } from "@/components/CarteFormation";
+import { StickyCtaMobile } from "@/components/StickyCtaMobile";
+
+export const revalidate = 3600;
 
 interface PageProps {
   params: { slug: string };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+const getFormation = cache(async (slug: string) => {
   const supabase = createClient();
-  const { data: formation } = await supabase
+  return supabase
     .from("formations")
-    .select("nom, description_courte, note_moyenne, nb_avis, fondateur")
-    .eq("slug", params.slug)
+    .select("*, formations_categories(*)")
+    .eq("slug", slug)
     .single();
+});
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { data: formation } = await getFormation(params.slug);
 
   if (!formation) return {};
 
   return {
     title: `${formation.nom} — Avis, Prix, Note (${formation.note_moyenne}/5)`,
     description: `${formation.nom} par ${formation.fondateur} : ${formation.description_courte} Note : ${formation.note_moyenne}/5 sur ${formation.nb_avis} avis.`,
+    alternates: {
+      canonical: `https://meilleure-formation.cloud/formations/${params.slug}`,
+    },
     openGraph: {
       title: `${formation.nom} — ${formation.note_moyenne}/5 (${formation.nb_avis} avis)`,
       description: formation.description_courte || undefined,
@@ -30,43 +41,54 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function FormationPage({ params }: PageProps) {
-  const supabase = createClient();
-
-  const { data: formation } = await supabase
+export async function generateStaticParams() {
+  const { createClient: createBrowserClient } = await import("@supabase/supabase-js");
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const { data } = await supabase
     .from("formations")
-    .select("*, formations_categories(*)")
-    .eq("slug", params.slug)
-    .single();
+    .select("slug")
+    .eq("est_active", true);
+  return (data || []).map((f: any) => ({ slug: f.slug }));
+}
+
+export default async function FormationPage({ params }: PageProps) {
+  const { data: formation } = await getFormation(params.slug);
 
   if (!formation) notFound();
 
-  const { data: avis } = await supabase
-    .from("avis")
-    .select("*")
-    .eq("formation_id", formation.id)
-    .eq("est_publie", true)
-    .order("created_at", { ascending: false });
+  const supabase = createClient();
 
-  // Formations similaires (même catégorie)
-  const { data: similaires } = await supabase
-    .from("formations")
-    .select("*")
-    .eq("categorie_id", formation.categorie_id!)
-    .neq("id", formation.id)
-    .eq("est_active", true)
-    .order("note_moyenne", { ascending: false })
-    .limit(3);
+  const [{ data: avis }, { data: similaires }] = await Promise.all([
+    supabase
+      .from("avis")
+      .select("*")
+      .eq("formation_id", formation.id)
+      .eq("est_publie", true)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("formations")
+      .select("*")
+      .eq("categorie_id", formation.categorie_id!)
+      .neq("id", formation.id)
+      .eq("est_active", true)
+      .order("note_moyenne", { ascending: false })
+      .limit(3),
+  ]);
 
   const categorie = formation.formations_categories;
   const ctaUrl = formation.url_affiliation || formation.url_officielle;
 
-  // Schema.org Course + AggregateRating
+  // Schema.org Course + AggregateRating (fixed)
   const schemaCourse = {
     "@context": "https://schema.org",
     "@type": "Course",
     name: formation.nom,
     description: formation.description_longue || formation.description_courte,
+    url: `https://meilleure-formation.cloud/formations/${formation.slug}`,
+    inLanguage: "fr",
     provider: {
       "@type": "Organization",
       name: formation.fondateur || formation.nom,
@@ -81,17 +103,24 @@ export default async function FormationPage({ params }: PageProps) {
       },
     }),
     offers: formation.prix_min
-      ? {
-          "@type": "Offer",
-          price: formation.prix_min,
-          priceCurrency: "EUR",
-          availability: "https://schema.org/InStock",
-          ...(formation.prix_max && { highPrice: formation.prix_max }),
-        }
+      ? formation.prix_max && formation.prix_max !== formation.prix_min
+        ? {
+            "@type": "AggregateOffer",
+            lowPrice: formation.prix_min,
+            highPrice: formation.prix_max,
+            priceCurrency: "EUR",
+            availability: "https://schema.org/InStock",
+          }
+        : {
+            "@type": "Offer",
+            price: formation.prix_min,
+            priceCurrency: "EUR",
+            availability: "https://schema.org/InStock",
+          }
       : undefined,
     hasCourseInstance: {
       "@type": "CourseInstance",
-      courseMode: formation.format || "100% en ligne",
+      courseMode: "Online",
       ...(formation.duree_heures && {
         duration: `PT${formation.duree_heures}H`,
       }),
@@ -111,6 +140,35 @@ export default async function FormationPage({ params }: PageProps) {
     reviewBody: a.contenu,
     datePublished: a.created_at,
   }));
+
+  // Schema.org BreadcrumbList
+  const schemaBreadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Accueil",
+        item: "https://meilleure-formation.cloud",
+      },
+      ...(categorie
+        ? [
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: categorie.nom,
+              item: `https://meilleure-formation.cloud/categorie/${categorie.slug}`,
+            },
+          ]
+        : []),
+      {
+        "@type": "ListItem",
+        position: categorie ? 3 : 2,
+        name: formation.nom,
+      },
+    ],
+  };
 
   // FAQ dynamique
   const faqItems = [
@@ -146,6 +204,19 @@ export default async function FormationPage({ params }: PageProps) {
     },
   ];
 
+  const schemaFaq = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    })),
+  };
+
   return (
     <>
       <script
@@ -157,10 +228,18 @@ export default async function FormationPage({ params }: PageProps) {
           }),
         }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaBreadcrumb) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaFaq) }}
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm text-gray-500 mb-6">
+        <nav aria-label="Fil d'Ariane" className="flex items-center gap-2 text-sm text-gray-500 mb-6">
           <Link href="/" className="hover:text-primary-600">Accueil</Link>
           <span>/</span>
           {categorie && (
@@ -194,10 +273,18 @@ export default async function FormationPage({ params }: PageProps) {
                     <p className="text-gray-500 mt-1">par {formation.fondateur}</p>
                   )}
                   <div className="mt-3 flex items-center gap-3 flex-wrap">
-                    <EtoilesNote
-                      note={Number(formation.note_moyenne)}
-                      nbAvis={formation.nb_avis}
-                    />
+                    {formation.trustpilot_note ? (
+                      <EtoilesNote
+                        note={Number(formation.trustpilot_note)}
+                        nbAvis={formation.trustpilot_nb_avis}
+                        source="Trustpilot"
+                      />
+                    ) : (
+                      <EtoilesNote
+                        note={Number(formation.note_moyenne)}
+                        nbAvis={formation.nb_avis}
+                      />
+                    )}
                     {formation.eligible_cpf && <BadgeCPF />}
                     {formation.garantie && <BadgeGarantie />}
                   </div>
@@ -435,6 +522,15 @@ export default async function FormationPage({ params }: PageProps) {
           </aside>
         </div>
       </div>
+
+      {/* Sticky CTA mobile */}
+      {ctaUrl && (
+        <StickyCtaMobile
+          ctaUrl={ctaUrl}
+          prixMin={formation.prix_min}
+          formationNom={formation.nom}
+        />
+      )}
     </>
   );
 }

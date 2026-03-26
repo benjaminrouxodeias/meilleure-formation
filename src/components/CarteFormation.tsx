@@ -46,11 +46,20 @@ export function CarteFormation({ formation }: CarteFormationProps) {
             )}
 
             <div className="mt-2">
-              <EtoilesNote
-                note={Number(formation.note_moyenne)}
-                nbAvis={formation.nb_avis}
-                taille="sm"
-              />
+              {formation.trustpilot_note ? (
+                <EtoilesNote
+                  note={Number(formation.trustpilot_note)}
+                  nbAvis={formation.trustpilot_nb_avis}
+                  taille="sm"
+                  source="Trustpilot"
+                />
+              ) : (
+                <EtoilesNote
+                  note={Number(formation.note_moyenne)}
+                  nbAvis={formation.nb_avis}
+                  taille="sm"
+                />
+              )}
             </div>
 
             {formation.description_courte && (

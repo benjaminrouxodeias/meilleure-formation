@@ -21,6 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `Laisser un avis sur ${formation.nom}`,
     description: `Partagez votre expérience avec ${formation.nom}. Votre avis aidera d'autres personnes à faire le bon choix.`,
+    robots: { index: false, follow: true },
   };
 }
 
