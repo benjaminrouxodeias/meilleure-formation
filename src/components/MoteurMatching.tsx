@@ -144,7 +144,11 @@ export function MoteurMatching() {
                       {formation.est_recommandee && <BadgeRecommandee />}
                     </div>
                     <div className="mt-1">
-                      <EtoilesNote note={Number(formation.note_moyenne)} nbAvis={formation.nb_avis} taille="sm" />
+                      {formation.trustpilot_note ? (
+                        <EtoilesNote note={Number(formation.trustpilot_note)} nbAvis={formation.trustpilot_nb_avis} taille="sm" source="Trustpilot" />
+                      ) : (
+                        <EtoilesNote note={Number(formation.note_moyenne)} nbAvis={formation.nb_avis} taille="sm" />
+                      )}
                     </div>
                     <p className="text-sm text-gray-600 mt-2">{formation.description_courte}</p>
                     <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -264,9 +268,18 @@ function MatchExplanation({ reponses, formation }: { reponses: Record<string, st
 async function rechercherFormations(reponses: Record<string, string>): Promise<Formation[]> {
   const supabase = createClient();
 
+  // Pour le copywriting, toujours recommander L'Académie uniquement
+  if (reponses.secteur === "copywriting") {
+    const { data: academie } = await supabase
+      .from("formations")
+      .select("*")
+      .eq("slug", "lacademie-copywriting")
+      .single();
+    return academie ? [academie] : [];
+  }
+
   // Mapper le secteur vers un slug de catégorie
   const secteurToSlug: Record<string, string[]> = {
-    copywriting: ["copywriting"],
     "marketing-digital": ["marketing-digital"],
     "e-commerce": ["e-commerce", "dropshipping"],
     closing: ["closing"],
